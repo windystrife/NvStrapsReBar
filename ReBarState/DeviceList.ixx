@@ -498,31 +498,50 @@ static tuple<uint_least8_t, uint_least8_t, uint_least8_t> parsePciAddress(string
     return tuple(uint_least8_t { BYTE_BITMASK }, uint_least8_t { BYTE_BITMASK }, uint_least8_t { BYTE_BITMASK });
 }
 
-// BAR0 (the GPU register aperture) is the first line of the sysfs "resource" file.
-static void readDeviceBAR0(fs::path const &deviceDir, DeviceInfo &deviceInfo)
+// Parse the sysfs "resource" file (one line per BAR: "start end flags").
+// bar0 is the first memory BAR (the register aperture the DXE driver anchors on);
+// currentBARSize is the largest memory BAR (the resizable VRAM aperture, i.e. what
+// ReBAR grows) — mirroring the Windows tool, which reports the max memory resource.
+static void readDeviceBARs(fs::path const &deviceDir, DeviceInfo &deviceInfo)
 {
+    constexpr uint_least64_t IORESOURCE_MEM = 0x200u;   // Linux resource flag: memory (vs 0x100 I/O)
+
     std::ifstream resource(deviceDir / "resource");
     std::string line;
+    bool firstMemBar = true;
 
-    if (std::getline(resource, line))
+    while (std::getline(resource, line))
     {
         std::istringstream fields(line);
-        std::string startText, endText;
+        std::string startText, endText, flagsText;
 
-        if (fields >> startText >> endText)
-            try
-            {
-                uint_least64_t const base = std::stoull(startText, nullptr, 0);
-                uint_least64_t const top = std::stoull(endText, nullptr, 0);
+        if (!(fields >> startText >> endText >> flagsText))
+            continue;
 
-                if (top > base)
-                {
-                    deviceInfo.bar0.Base = base;
-                    deviceInfo.bar0.Top = top;
-                    deviceInfo.currentBARSize = top - base + 1u;
-                }
-            }
-            catch (...) { }
+        uint_least64_t base, top, flags;
+
+        try
+        {
+            base = std::stoull(startText, nullptr, 0);
+            top = std::stoull(endText, nullptr, 0);
+            flags = std::stoull(flagsText, nullptr, 0);
+        }
+        catch (...) { continue; }
+
+        if (top <= base || !(flags & IORESOURCE_MEM))    // skip empty BARs and I/O ports
+            continue;
+
+        uint_least64_t const size = top - base + 1u;
+
+        if (firstMemBar)                                 // BAR0: the register aperture
+        {
+            deviceInfo.bar0.Base = base;
+            deviceInfo.bar0.Top = top;
+            firstMemBar = false;
+        }
+
+        if (size > deviceInfo.currentBARSize)            // largest memory BAR = current ReBAR window
+            deviceInfo.currentBARSize = size;
     }
 }
 
@@ -599,7 +618,11 @@ static void enumPciDisplayAdapters(vector<DeviceInfo> &deviceSet)
         tie(deviceInfo.bus, deviceInfo.device, deviceInfo.function) = parsePciAddress(address);
 
         readParentBridge(deviceDir, deviceInfo);
-        readDeviceBAR0(deviceDir, deviceInfo);
+        readDeviceBARs(deviceDir, deviceInfo);
+
+        // VRAM total: no sysfs source for the NVIDIA blob driver, so query nvidia-smi
+        // (best effort — left at 0 when nvidia-smi is unavailable).
+        deviceInfo.dedicatedVideoMemory = nvidiaVramBytes(address.c_str());
 
         // Prefer a human-readable name from the PCI id database (libpci); fall
         // back to a synthesised "PCI VVVV:DDDD" label when the id is unknown.
