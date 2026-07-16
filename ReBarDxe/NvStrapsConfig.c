@@ -153,8 +153,8 @@ static void NvStrapsConfig_Load(BYTE const *buffer, unsigned size, NvStrapsConfi
             break;
 
         config->nPciBarSize = unpack_BYTE(buffer), buffer += BYTE_SIZE;
-        config->nOptionFlags = unpack_WORD(buffer), buffer += WORD_SIZE;
-	config->nSetupVarCRC = unpack_QWORD(buffer), buffer += QWORD_SIZE;
+        config->nOptionFlags = unpack_BYTE(buffer), buffer += BYTE_SIZE;      // legacy v0.2/v0.3: 1-byte flags
+	config->nSetupVarCRC = UINT64_C(0);                                   // legacy format has no CRC field
         config->nGPUSelector = unpack_BYTE(buffer), buffer += BYTE_SIZE;
 
         if (config->nGPUSelector > ARRAY_SIZE(config->GPUs) || size < (unsigned)NV_STRAPS_HEADER_SIZE + BYTE_SIZE + config->nGPUSelector * GPU_SELECTOR_SIZE + BYTE_SIZE)
@@ -205,8 +205,7 @@ static unsigned NvStrapsConfig_Save(BYTE *buffer, unsigned size, NvStrapsConfig 
          && size >= BUFFER_SIZE)
     {
         buffer = pack_BYTE(buffer, config->nPciBarSize);
-        buffer = pack_WORD(buffer, config->nOptionFlags);
-	buffer = pack_QWORD(buffer, config->nSetupVarCRC);
+        buffer = pack_BYTE(buffer, config->nOptionFlags & 0xFFu);            // legacy v0.2/v0.3: 1-byte flags, no CRC field
         buffer = pack_BYTE(buffer, config->nGPUSelector);
 
         for (unsigned i = 0u; i < config->nGPUSelector; i++)

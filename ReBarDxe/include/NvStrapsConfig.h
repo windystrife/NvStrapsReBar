@@ -219,7 +219,9 @@ typedef struct NvStrapsConfig
 
 enum
 {
-    NV_STRAPS_HEADER_SIZE = BYTE_SIZE /* PCI BAR size */ + WORD_SIZE /* Option flags */ + QWORD_SIZE /* SetupVar CRC64 */,
+    // Legacy v0.2/v0.3 variable layout: 1-byte option flags, no SetupVar CRC64 field.
+    // Kept for compatibility with the v0.2/v0.3 DXE driver already flashed in firmware.
+    NV_STRAPS_HEADER_SIZE = BYTE_SIZE /* PCI BAR size */ + BYTE_SIZE /* Option flags */,
     NV_STRAPS_CONFIG_SIZE = NV_STRAPS_HEADER_SIZE
         + BYTE_SIZE + GPU_SELECTOR_SIZE * NvStraps_GPU_MAX_COUNT
         + BYTE_SIZE + GPU_CONFIG_SIZE * NvStraps_GPU_MAX_COUNT

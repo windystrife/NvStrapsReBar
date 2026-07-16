@@ -262,8 +262,14 @@ static void setConfigDirtyOnMismatch(vector<DeviceInfo> const &deviceList, NvStr
 
 static void populateBridgeAndGpuConfig(NvStrapsConfig &config, vector<DeviceInfo> deviceList)
 {
-    config.resetConfig();
-
+    // Do NOT resetConfig() here: keep existing GPU/bridge entries so configs for
+    // alternate bus numberings survive a save. On some multi-socket boards the GPU
+    // flips between bus numbers across boots (e.g. 82:00.0 <-> 83:00.0); the DXE
+    // driver looks up the entry by the bus it sees at boot, so retaining entries
+    // for both layouts keeps ReBAR working whichever numbering the firmware picks.
+    // setGPUConfig()/setBridgeConfig() update-in-place entries with the same
+    // bus/dev/fn key and append new ones. Use the (C) menu option to clear stale
+    // entries after hardware changes.
     for (auto const &device: deviceList)
     {
 	auto const [priority, barSize] = config.lookupBarSize
