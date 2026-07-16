@@ -78,7 +78,7 @@ using std::endl;
 using namespace std::literals::string_literals;
 
 
-inline char const *WinAPIErrorCategory::name() const noexcept
+char const *WinAPIErrorCategory::name() const noexcept
 {
     return "winapi";
 }

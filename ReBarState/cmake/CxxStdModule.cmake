@@ -65,16 +65,11 @@ elseif(MSVC)
         message(FATAL_ERROR "Unable to find C++ module source file std.ixx for Visual C++ standard libary")
     endif()
 
-    # add_library(CxxModuleStd OBJECT)
-    # cmake_path(GET MSVC_CXX_STD_MODULE_SOURCE_FILE PARENT_PATH MSVC_CXX_STD_MODULE_DIR)
-    # target_sources(CxxModuleStd PUBLIC FILE_SET std_cxx_module TYPE CXX_MODULES BASE_DIRS "${MSVC_CXX_STD_MODULE_DIR}" FILES "${MSVC_CXX_STD_MODULE_SOURCE_FILE}")
-    # target_compile_features(CxxModuleStd PUBLIC cxx_std_23)
-
-    add_library(CxxModuleStd INTERFACE)
+    add_library(CxxModuleStd OBJECT)
     cmake_path(GET MSVC_CXX_STD_MODULE_SOURCE_FILE PARENT_PATH MSVC_CXX_STD_MODULE_DIR)
-    target_sources(CxxModuleStd INTERFACE "${MSVC_CXX_STD_MODULE_SOURCE_FILE}")
-    target_compile_features(CxxModuleStd INTERFACE cxx_std_23)
-    target_compile_options(CxxModuleStd INTERFACE
+    target_sources(CxxModuleStd PUBLIC FILE_SET std_cxx_module TYPE CXX_MODULES BASE_DIRS "${MSVC_CXX_STD_MODULE_DIR}" FILES "${MSVC_CXX_STD_MODULE_SOURCE_FILE}")
+    target_compile_features(CxxModuleStd PUBLIC cxx_std_23)
+    target_compile_options(CxxModuleStd PUBLIC
 	"/permissive-"
 	"/Zc:enumTypes"
 	"/Zc:__cplusplus"

@@ -306,7 +306,7 @@ static char const *configurationManagerErrorMessage(int error)
     return "Configuration Manager error";
 }
 
-inline string ConfigManagerErrorCategory::message(int error) const
+string ConfigManagerErrorCategory::message(int error) const
 {
     return "PnP Configuration Manager error code " + to_string(error) + ": " + configurationManagerErrorMessage(error);
 }

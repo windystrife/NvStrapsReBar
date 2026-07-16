@@ -189,11 +189,7 @@ static wstring showMainMenuEntry(MenuCommand menuCommand, bool isGlobalEnable, v
             wstring commands(1u, L'G');
             wcout << L"\t    Manually configure BAR size for specific GPUs:\n"sv;
 
-#if defined(__clang__)
 	    auto it = max_element(/* execution::par_unseq, */ devices.cbegin(), devices.cend(), [](auto const &left, auto const &right)
-#else
-	    auto it = max_element(execution::par_unseq, devices.cbegin(), devices.cend(), [](auto const &left, auto const &right)
-#endif
 		    {
 			return left.productName.length() < right.productName.length();
 		    });
