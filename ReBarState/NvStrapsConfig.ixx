@@ -30,6 +30,14 @@ module: private;
 using std::to_wstring;
 namespace views = std::views;
 
+// Native error category for ERROR_CODE values: Win32 error codes on Windows,
+// errno values on Linux.
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
+static std::error_category const &platform_error_category() { return winapi_error_category(); }
+#else
+static std::error_category const &platform_error_category() { return std::generic_category(); }
+#endif
+
 NvStrapsConfig &GetNvStrapsConfig(bool reload)
 {
     auto errorCode = ERROR_CODE { ERROR_CODE_SUCCESS };
@@ -37,7 +45,7 @@ NvStrapsConfig &GetNvStrapsConfig(bool reload)
 
     return errorCode == ERROR_CODE_SUCCESS
 	? *strapsConfig
-	: throw system_error(static_cast<int>(errorCode), winapi_error_category(), "Error loading configuration from "s + NvStrapsConfig_VarName + " EFI variable"s);
+	: throw system_error(static_cast<int>(errorCode), platform_error_category(), "Error loading configuration from "s + NvStrapsConfig_VarName + " EFI variable"s);
 }
 
 void SaveNvStrapsConfig()
@@ -47,7 +55,7 @@ void SaveNvStrapsConfig()
     SaveNvStrapsConfig(&errorCode);
 
     if (errorCode != ERROR_CODE_SUCCESS)
-	throw system_error { static_cast<int>(errorCode), winapi_error_category(), "Error saving configuration to "s + NvStrapsConfig_VarName + " EFI variable"s };
+	throw system_error { static_cast<int>(errorCode), platform_error_category(), "Error saving configuration to "s + NvStrapsConfig_VarName + " EFI variable"s };
 }
 
 static wchar_t const hexDigits[16 + 1] = L"0123456789ABCDEF";
@@ -66,11 +74,15 @@ static wstring formatAddress64(uint_least64_t addr, bool fCheckWidth = true)
 {
     wstring hexStr(!fCheckWidth || addr > DWORD_BITMASK ? QWORD_SIZE * 2u + 3u : DWORD_SIZE * 2u + 1u, L' ');
 
-    for (auto [i, ch]: hexStr | views::enumerate)
+    for (std::size_t i = 0u; i < hexStr.size(); i++)
+    {
+	auto &ch = hexStr[i];
+
 	if ((i + 1) % (WORD_SIZE * 2u + 1u) == 0)
 	    ch = L'\'';
 	else
 	    ch = hexDigits[addr & 0x0000'000Fu], addr >>= 4u;
+    }
 
     return wstring { hexStr.rbegin(), hexStr.rend() };
 }
@@ -111,8 +123,9 @@ void ShowNvStrapsConfig(function<void (wstring const &)> show)
     show(L"\tnPciBarSize:       "s + to_wstring(config.nPciBarSize) + L'\n');
     show(L"\tnGPUSelectorCount: "s + to_wstring(config.nGPUSelector) + L'\n');
 
-    for (auto const &&[i, gpuSelector]: config.GPUs | views::enumerate | views::take(config.nGPUSelector))
+    for (std::size_t i = 0u; i < config.nGPUSelector; i++)
     {
+	auto const &gpuSelector = config.GPUs[i];
 	show(L"\t\tGPUSelector"s + to_wstring(i + 1) + L":  deviceID:            "s + formatPCI_ID(gpuSelector.deviceID) + L'\n');
 	show(L"\t\tGPUSelector"s + to_wstring(i + 1) + L":  subsysVendorID:      "s + formatPCI_ID(gpuSelector.subsysVendorID) + L'\n');
 	show(L"\t\tGPUSelector"s + to_wstring(i + 1) + L":  subsysDeviceID:      "s + formatPCI_ID(gpuSelector.subsysDeviceID) + L'\n');
@@ -126,8 +139,9 @@ void ShowNvStrapsConfig(function<void (wstring const &)> show)
 
     show(L"\tnGPUConfigCount:   "s + to_wstring(config.nGPUConfig) + L'\n');
 
-    for (auto const &&[i, gpuConfig]: config.gpuConfig | views::enumerate | views::take(config.nGPUConfig))
+    for (std::size_t i = 0u; i < config.nGPUConfig; i++)
     {
+	auto const &gpuConfig = config.gpuConfig[i];
 	show(L"\t\tGPUConfig"s + to_wstring(i + 1) + L":    deviceID:        "s + formatPCI_ID(gpuConfig.deviceID) + L'\n');
 	show(L"\t\tGPUConfig"s + to_wstring(i + 1) + L":    subsysVendorID:  "s + formatPCI_ID(gpuConfig.subsysVendorID) + L'\n');
 	show(L"\t\tGPUConfig"s + to_wstring(i + 1) + L":    subsysDeviceID:  "s + formatPCI_ID(gpuConfig.subsysDeviceID) + L'\n');
@@ -141,8 +155,9 @@ void ShowNvStrapsConfig(function<void (wstring const &)> show)
 
     show(L"\tnBridgeCount:      "s + to_wstring(config.nBridgeConfig) + L'\n');
 
-    for (auto const &&[i, bridgeConfig]: config.bridge | views::enumerate | views::take(config.nBridgeConfig))
+    for (std::size_t i = 0u; i < config.nBridgeConfig; i++)
     {
+	auto const &bridgeConfig = config.bridge[i];
 	show(L"\t\tBridgeConfig"s + to_wstring(i + 1) + L": vendorID:        "s + formatPCI_ID(bridgeConfig.vendorID) + L'\n');
 	show(L"\t\tBridgeConfig"s + to_wstring(i + 1) + L": deviceID:        "s + formatPCI_ID(bridgeConfig.deviceID) + L'\n');
 	show(L"\t\tBridgeConfig"s + to_wstring(i + 1) + L": bus:             "s + formatHexByte(bridgeConfig.bridgeBus) + L'\n');

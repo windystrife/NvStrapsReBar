@@ -176,8 +176,9 @@ static void showLocalGPUs(vector<DeviceInfo> const &deviceSet, NvStrapsConfig co
     wcout << L"|    |  VID:DID   |   VID:DID  |  "sv << setw(nMaxLocationSize) << left << "bus:dev.fn" << L" |  "sv << setw(nMaxTargetBarSize) << L"BAR size"sv << L" | "sv << setw(nMaxCurrentBarSize) << L"BAR size"sv << L" | "sv << setw(nMaxVRAMSize) << L"size"sv << L" | "sv << wstring(nMaxNameSize, L' ') << L" |\n"sv;
     wcout << L"+----+------------+------------+--"sv << wstring(nMaxLocationSize, L'-') << L"-+--"sv << wstring(nMaxTargetBarSize, L'-') << L"-+-"sv << wstring(nMaxCurrentBarSize, L'-') << L"-+-"sv << wstring(nMaxVRAMSize, L'-') << L"-+-"sv << wstring(nMaxNameSize, L'-') << L"-+\n"sv;
 
-    for (auto const &&[deviceIndex, deviceInfo]: deviceSet | views::enumerate)
+    for (std::size_t deviceIndex = 0u; deviceIndex < deviceSet.size(); deviceIndex++)
     {
+	auto const &deviceInfo = deviceSet[deviceIndex];
 	auto bridgeInfo = nvStrapsConfig.lookupBridgeConfig(deviceInfo.bus);
 
         auto [configPriority, barSizeSelector] = nvStrapsConfig.lookupBarSize
@@ -433,7 +434,7 @@ wstring_view driverErrorString(EFIErrorLocation errLocation)
 
 static void showDriverStatus(uint_least64_t driverStatus)
 {
-    uint_least32_t status = driverStatus & DWORD_BITMASK;
+    std::uint_least32_t status = driverStatus & DWORD_BITMASK;
 
     wcout << L"UEFI DXE driver status: "sv << driverStatusString(status)
         << (status == StatusVar_Internal_EFIError ? driverErrorString(static_cast<EFIErrorLocation>(driverStatus >> (DWORD_BITSIZE + BYTE_BITSIZE) & BYTE_BITMASK)) : L""sv)

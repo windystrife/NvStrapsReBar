@@ -1,11 +1,19 @@
+module;
+
+#if !defined(WINDOWS) && !defined(_WINDOWS) && !defined(_WIN64) && !defined(_WIN32)
+#include "PciNames.h"     // libpci device-name lookup (Linux)
+#endif
+
 export module DeviceList;
 
 import std;
 
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 import NvStraps.WinAPI;
 import NvStraps.DXGI;
 import WinApiError;
 import ConfigManagerError;
+#endif
 import LocalAppConfig;
 import NvStrapsConfig;
 
@@ -86,6 +94,24 @@ template <typename ...ArgsT>
     return std::regex_match(forward<ArgsT>(args)...);
 }
 
+// Cross-platform: format a byte count as a human-readable size string.
+wstring formatMemorySize(uint_least64_t size)
+{
+    wstring_view const suffixes[] = { L"Bytes"sv, L"KiB"sv, L"MiB"sv, L"GiB"sv, L"TiB"sv, L"PiB"sv };
+    wstring_view unit = L"EiB"sv; // UINT64 can hold values up to 2 EBytes - 1
+
+    for (auto suffix: suffixes)
+        if (size >= 1024u)
+            size = (size + 512u) / 1024u;
+        else
+        {
+            unit = suffix;
+            break;
+        }
+
+    return to_wstring(size) + L' ' + wstring { unit };
+}
+
 #if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 
 static bool fillDedicatedMemorySize(vector<DeviceInfo> &deviceSet)
@@ -135,23 +161,6 @@ static bool fillDedicatedMemorySize(vector<DeviceInfo> &deviceSet)
         throw runtime_error("DirectX Graphics Infrastructure function error listing GPUs\n"s);
 
     return false;
-}
-
-wstring formatMemorySize(uint_least64_t size)
-{
-    wstring_view const suffixes[] = { L"Bytes"sv, L"KiB"sv, L"MiB"sv, L"GiB"sv, L"TiB"sv, L"PiB"sv };
-    wstring_view unit = L"EiB"sv; // UINT64 can hold values up to 2 EBytes - 1
-
-    for (auto suffix: suffixes)
-        if (size >= 1024u)
-            size = (size + 512u) / 1024u;
-        else
-        {
-            unit = suffix;
-            break;
-        }
-
-    return to_wstring(size) + L' ' + wstring { unit };
 }
 
 static bool nextResourceDescriptor(RES_DES &descriptor, RESOURCEID &resourceType)
@@ -439,6 +448,187 @@ try
         enumPciDisplayAdapters(deviceSet);
         fillDedicatedMemorySize(deviceSet);
     }
+
+    return deviceSet;
+}
+catch (system_error const &ex)
+{
+    cerr << ex.what() << endl;
+
+    return emptyDeviceSet;
+}
+catch (exception const &ex)
+{
+    cerr << "Application error while listing display adapters: " << ex.what() << endl;
+
+    return emptyDeviceSet;
+}
+catch (...)
+{
+    cerr << "Application error while listing display adapters\n";
+
+    return emptyDeviceSet;
+}
+
+#else   // Linux: enumerate PCI display adapters through the sysfs PCI tree
+
+namespace fs = std::filesystem;
+
+// Read a hex (0x-prefixed) or decimal integer from a one-line sysfs attribute.
+static std::optional<uint_least64_t> readSysfsValue(fs::path const &path)
+{
+    std::ifstream in(path);
+    std::string token;
+
+    if (in >> token)
+        try { return static_cast<uint_least64_t>(std::stoull(token, nullptr, 0)); }
+        catch (...) { }
+
+    return std::nullopt;
+}
+
+// Parse a PCI address "DDDD:BB:DD.F" into (bus, device, function).
+static tuple<uint_least8_t, uint_least8_t, uint_least8_t> parsePciAddress(string const &address)
+{
+    unsigned domain = 0u, bus = 0u, device = 0u, function = 0u;
+
+    if (std::sscanf(address.c_str(), "%x:%x:%x.%x", &domain, &bus, &device, &function) == 4)
+        return tuple(static_cast<uint_least8_t>(bus), static_cast<uint_least8_t>(device), static_cast<uint_least8_t>(function));
+
+    return tuple(uint_least8_t { BYTE_BITMASK }, uint_least8_t { BYTE_BITMASK }, uint_least8_t { BYTE_BITMASK });
+}
+
+// BAR0 (the GPU register aperture) is the first line of the sysfs "resource" file.
+static void readDeviceBAR0(fs::path const &deviceDir, DeviceInfo &deviceInfo)
+{
+    std::ifstream resource(deviceDir / "resource");
+    std::string line;
+
+    if (std::getline(resource, line))
+    {
+        std::istringstream fields(line);
+        std::string startText, endText;
+
+        if (fields >> startText >> endText)
+            try
+            {
+                uint_least64_t const base = std::stoull(startText, nullptr, 0);
+                uint_least64_t const top = std::stoull(endText, nullptr, 0);
+
+                if (top > base)
+                {
+                    deviceInfo.bar0.Base = base;
+                    deviceInfo.bar0.Top = top;
+                    deviceInfo.currentBARSize = top - base + 1u;
+                }
+            }
+            catch (...) { }
+    }
+}
+
+// The upstream PCIe bridge (Root Port) is the parent directory in the resolved sysfs path.
+static void readParentBridge(fs::path const &deviceDir, DeviceInfo &deviceInfo)
+{
+    deviceInfo.bridge.vendorID = deviceInfo.bridge.deviceID = 0u;
+    deviceInfo.bridge.bus = deviceInfo.bridge.dev = deviceInfo.bridge.func = BYTE_BITMASK;
+
+    std::error_code ec;
+    fs::path const realPath = fs::canonical(deviceDir, ec);
+
+    if (ec)
+        return;
+
+    fs::path const parent = realPath.parent_path();
+    string const parentName = parent.filename().string();
+
+    unsigned domain = 0u, bus = 0u, device = 0u, function = 0u;
+
+    if (std::sscanf(parentName.c_str(), "%x:%x:%x.%x", &domain, &bus, &device, &function) != 4)
+        return;         // parent is the PCI root complex, not a bridge device
+
+    if (auto const value = readSysfsValue(parent / "vendor"))
+        deviceInfo.bridge.vendorID = static_cast<uint_least16_t>(*value);
+
+    if (auto const value = readSysfsValue(parent / "device"))
+        deviceInfo.bridge.deviceID = static_cast<uint_least16_t>(*value);
+
+    tie(deviceInfo.bridge.bus, deviceInfo.bridge.dev, deviceInfo.bridge.func) = parsePciAddress(parentName);
+}
+
+static void enumPciDisplayAdapters(vector<DeviceInfo> &deviceSet)
+{
+    fs::path const pciDevices { "/sys/bus/pci/devices" };
+    std::error_code ec;
+
+    if (!fs::exists(pciDevices, ec))
+        throw runtime_error("Cannot access /sys/bus/pci/devices to list display adapters"s);
+
+    for (auto const &entry: fs::directory_iterator(pciDevices, ec))
+    {
+        fs::path const deviceDir = entry.path();            // symlink named "DDDD:BB:DD.F"
+        string const address = deviceDir.filename().string();
+
+        auto const pciClass = readSysfsValue(deviceDir / "class");
+
+        if (!pciClass || (*pciClass >> 16u) != 0x03u)       // PCI base class 0x03 == display controller
+            continue;
+
+        auto const vendor = readSysfsValue(deviceDir / "vendor");
+
+        if (!vendor)
+            continue;
+
+#if defined(NDEBUG)
+        if (static_cast<uint_least16_t>(*vendor) != TARGET_GPU_VENDOR_ID)
+            continue;
+#endif
+
+        DeviceInfo deviceInfo { .dedicatedVideoMemory = 0ull };
+
+        deviceInfo.vendorID = static_cast<uint_least16_t>(*vendor);
+
+        if (auto const value = readSysfsValue(deviceDir / "device"))
+            deviceInfo.deviceID = static_cast<uint_least16_t>(*value);
+
+        if (auto const value = readSysfsValue(deviceDir / "subsystem_vendor"))
+            deviceInfo.subsystemVendorID = static_cast<uint_least16_t>(*value);
+
+        if (auto const value = readSysfsValue(deviceDir / "subsystem_device"))
+            deviceInfo.subsystemDeviceID = static_cast<uint_least16_t>(*value);
+
+        tie(deviceInfo.bus, deviceInfo.device, deviceInfo.function) = parsePciAddress(address);
+
+        readParentBridge(deviceDir, deviceInfo);
+        readDeviceBAR0(deviceDir, deviceInfo);
+
+        // Prefer a human-readable name from the PCI id database (libpci); fall
+        // back to a synthesised "PCI VVVV:DDDD" label when the id is unknown.
+        char nameBuffer[256];
+
+        if (int const length = pciLookupDeviceName(deviceInfo.vendorID, deviceInfo.deviceID, nameBuffer, (int)sizeof nameBuffer); length > 0)
+            deviceInfo.productName.assign(nameBuffer, nameBuffer + length);   // ASCII widened to wchar_t
+        else
+        {
+            std::wostringstream productName;
+            productName << std::uppercase << std::hex << std::setfill(L'0')
+                        << L"PCI " << std::setw(4) << deviceInfo.vendorID
+                        << L':' << std::setw(4) << deviceInfo.deviceID;
+            deviceInfo.productName = productName.str();
+        }
+
+        deviceSet.push_back(move(deviceInfo));
+    }
+}
+
+static vector<DeviceInfo> emptyDeviceSet;
+
+vector<DeviceInfo> const &getDeviceList()
+try
+{
+    static vector<DeviceInfo> deviceSet;
+
+    if (deviceSet.empty())
+        enumPciDisplayAdapters(deviceSet);
 
     return deviceSet;
 }

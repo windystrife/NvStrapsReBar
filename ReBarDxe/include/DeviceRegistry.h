@@ -5,10 +5,12 @@
 #if defined(UEFI_SOURCE) || defined(EFIAPI)
 # include <Uefi.h>
 #else
-# if defined(__cplusplus) && !defined(NVSTRAPS_DXE_DRIVER)
+# if defined(__cplusplus) && !defined(NVSTRAPS_DXE_DRIVER) && (defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32))
 import NvStraps.WinAPI;
-# else
+# elif defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 #  include <windef.h>
+# else
+#  include "LinuxTypes.h"
 # endif
 #endif
 

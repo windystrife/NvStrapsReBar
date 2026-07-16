@@ -90,7 +90,6 @@ using std::get;
 using std::find;
 using std::views::all;
 
-namespace execution = std::execution;
 namespace views = std::ranges::views;
 using namespace std::literals::string_view_literals;
 
@@ -201,8 +200,9 @@ static wstring showMainMenuEntry(MenuCommand menuCommand, bool isGlobalEnable, v
 
 	    auto maxNameLen = it == devices.cend() ? 0u : it->productName.length();
 
-	    for (auto const &&[index, device]: devices | views::enumerate)
+	    for (std::size_t index = 0u; index < devices.size(); index++)
             {
+		auto const &device = devices[index];
                 wcout << L"\t\t("sv << index + 1u << L"). "sv << setw(maxNameLen) << setfill(L' ') << left << device.productName;
 
 		auto [configPriority, barSizeSelector] = config.lookupBarSize
@@ -369,8 +369,8 @@ static wstring showBarSizeMenuEntry(MenuCommand menuCommand, unsigned short devi
         {
             wstring commands(11u, L'\0');
 
-            for (auto &&[index, ch]: commands | views::enumerate)
-                ch = static_cast<wchar_t>(L'0' + index) | WCHAR_T_HIGH_BIT_MASK;
+            for (std::size_t index = 0u; index < commands.size(); index++)
+                commands[index] = static_cast<wchar_t>(L'0' + index) | WCHAR_T_HIGH_BIT_MASK;
 
             return commands;
         }
@@ -547,7 +547,10 @@ static tuple<optional<MenuCommand>, unsigned> runInputPrompt(MenuType menuType, 
 
     wcout << promptLine << L" ("sv;
 
-    for (auto [index, commandChar]: commands | views::enumerate)
+    for (std::size_t index = 0u; index < commands.size(); index++)
+    {
+        auto const commandChar = commands[index];
+
         if (menuType != MenuType::Main || commandChar != L'G')      // L'G' - per-GPU configuration, GPU index used instead)
         {
             if (index)
@@ -558,10 +561,10 @@ static tuple<optional<MenuCommand>, unsigned> runInputPrompt(MenuType menuType, 
                 wchar_t ch = commandChar & ~WCHAR_T_HIGH_BIT_MASK;
                 ch -= L'0';
 
-                if (defaultCommand && numericInputMatchesDefaultCommand(unsigned { ch }, *defaultCommand, defaultValue))
-                    wcout << L'[' << to_wstring(unsigned { ch }) << L']';
+                if (defaultCommand && numericInputMatchesDefaultCommand(static_cast<unsigned>(ch), *defaultCommand, defaultValue))
+                    wcout << L'[' << to_wstring(static_cast<unsigned>(ch)) << L']';
                 else
-                    wcout << to_wstring(unsigned { ch });
+                    wcout << to_wstring(static_cast<unsigned>(ch));
             }
             else
                 if (defaultCommand && shortcutMatchesDefaultCommand(commandChar, *defaultCommand, defaultValue))
@@ -569,6 +572,7 @@ static tuple<optional<MenuCommand>, unsigned> runInputPrompt(MenuType menuType, 
                 else
                     wcout << commandChar;
         }
+    }
 
     wcout << L"): "sv;
 
@@ -619,10 +623,10 @@ static tuple<MenuCommand, unsigned> showMenu
 
 static MenuType getMenuType(span<MenuCommand> menu)
 {
-    if (find(execution::par_unseq, menu.begin(), menu.end(), MenuCommand::GPUVRAMSize) != menu.end())
+    if (find(menu.begin(), menu.end(), MenuCommand::GPUVRAMSize) != menu.end())
         return MenuType::GPUBARSize;
 
-    if (find(execution::par_unseq, menu.begin(), menu.end(), MenuCommand::UEFIBARSizePrompt) != menu.end())
+    if (find(menu.begin(), menu.end(), MenuCommand::UEFIBARSizePrompt) != menu.end())
         return MenuType::PCIBARSize;
 
     if (!menu.empty() && *menu.rbegin() != MenuCommand::Quit && *menu.rbegin() != MenuCommand::DiscardQuit)
@@ -702,10 +706,10 @@ bool runConfirmationPrompt(MenuCommand menuCommand)
 
     getline(wcin, input);
 
-    while (input | all && isspace(*input.begin()))
+    while (input | all && std::isspace(*input.begin()))
 	input.erase(input.begin());
 
-    while (input | all && isspace(*input.rbegin()))
+    while (input | all && std::isspace(*input.rbegin()))
 	input.resize(input.size() - 1u);
 
     for (auto &ch: input)

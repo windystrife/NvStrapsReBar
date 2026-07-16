@@ -56,7 +56,7 @@ bool CheckPriviledge()
 #endif
 }
 
-void pause()
+static void pauseBeforeExit()
 {
 // Linux will probably be run from terminal not requiring this
 #if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
@@ -75,20 +75,20 @@ try
 
     runConfigurationWizard();
 
-    return pause(), 0;
+    return pauseBeforeExit(), 0;
 }
 catch (system_error const &ex)
 {
     cerr << ex.what() << endl;
-    return pause(), 252u;
+    return pauseBeforeExit(), 252u;
 }
 catch (exception const &ex)
 {
     cerr << "Application error: "sv << ex.what() << endl;
-    return pause(), 253u;
+    return pauseBeforeExit(), 253u;
 }
 catch (...)
 {
     cerr << "Application error!"sv << endl;
-    return pause(), 254u;
+    return pauseBeforeExit(), 254u;
 }

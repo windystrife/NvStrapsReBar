@@ -2,8 +2,10 @@
 #include "NvStrapsConfig.h"
 
 import std;
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 import NvStraps.WinAPI;
 import WinApiError;
+#endif
 
 using std::begin;
 using std::end;
@@ -13,7 +15,6 @@ using std::copy;
 using std::system_error;
 
 namespace views = std::ranges::views;
-namespace execution = std::execution;
 using namespace std::literals::string_literals;
 
 bool NvStrapsConfig::setGPUSelector(uint_least8_t barSizeSelector, uint_least16_t deviceID, uint_least16_t subsysVenID, uint_least16_t subsysDevID, uint_least8_t bus, uint_least8_t dev, uint_least8_t fn)
@@ -31,7 +32,7 @@ bool NvStrapsConfig::setGPUSelector(uint_least8_t barSizeSelector, uint_least16_
     };
 
     auto end_it = begin(GPUs) + nGPUSelector;
-    auto it = find_if(execution::par_unseq, begin(GPUs), end_it, [&gpuSelector](auto const &selector)
+    auto it = find_if(begin(GPUs), end_it, [&gpuSelector](auto const &selector)
         {
             return selector.deviceMatch(gpuSelector.deviceID)
                  && selector.subsystemMatch(gpuSelector.subsysVendorID, gpuSelector.subsysDeviceID)
@@ -71,7 +72,7 @@ bool NvStrapsConfig::setBarSizeMaskOverride(bool sizeMaskOverride, uint_least16_
     };
 
     auto end_it = begin(GPUs) + nGPUSelector;
-    auto it = find_if(execution::par_unseq, begin(GPUs), end_it, [&gpuSelector](auto const &selector)
+    auto it = find_if(begin(GPUs), end_it, [&gpuSelector](auto const &selector)
         {
             return selector.deviceMatch(gpuSelector.deviceID)
                  && selector.subsystemMatch(gpuSelector.subsysVendorID, gpuSelector.subsysDeviceID)
@@ -109,7 +110,7 @@ bool NvStrapsConfig::clearGPUSelector(UINT16 deviceID, UINT16 subsysVenID, UINT1
     };
 
     auto end_it = begin(GPUs) + nGPUSelector;
-    auto it = find_if(execution::par_unseq, begin(GPUs), end_it, [&gpuSelector](auto const &selector)
+    auto it = find_if(begin(GPUs), end_it, [&gpuSelector](auto const &selector)
         {
             return selector.deviceMatch(gpuSelector.deviceID)
                  && selector.subsystemMatch(gpuSelector.subsysVendorID, gpuSelector.subsysDeviceID)

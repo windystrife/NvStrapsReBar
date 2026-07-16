@@ -11,7 +11,12 @@ using std::uint_least16_t;
 using std::uint_least32_t;
 using std::uint_least64_t;
 
+#  if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 import NvStraps.WinAPI;
+#  else
+#   include <stdint.h>
+#   include "LinuxTypes.h"
+#  endif
 import LocalAppConfig;
 import DeviceRegistry;
 

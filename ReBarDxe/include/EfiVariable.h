@@ -16,7 +16,7 @@ enum
    MAX_VARIABLE_NAME_LENGTH = 64u
 };
 
-#if defined(WINDOWS_SOURCE)
+#if !defined(UEFI_SOURCE) && !defined(EFIAPI)
 # if !defined(EFI_VARIABLE_NON_VOLATILE) && !defined(EFI_VARIABLE_BOOTSERVICE_ACCESS) && !defined(EFI_VARIABLE_RUNTIME_ACCESS)
 enum
 {

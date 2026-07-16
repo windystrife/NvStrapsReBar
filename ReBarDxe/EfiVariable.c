@@ -12,6 +12,10 @@
 #  include <errhandlingapi.h>
 # else
 #  include <errno.h>
+#  include <stdio.h>
+#  include <sys/types.h>
+#  include <sys/ioctl.h>
+#  include <linux/fs.h>
 # endif
 #endif
 
@@ -35,7 +39,7 @@ void fillFilePath(char *filePath, char const *name)
 {
     unsigned i;
 
-    for (i = 0u; i < ARRAY_SIZE(variablePath; i++))
+    for (i = 0u; i < ARRAY_SIZE(variablePath) - 1u; i++)   // skip the terminating NUL
         filePath[i] = variablePath[i];
 
     for (unsigned j = 0u; j < MAX_VARIABLE_NAME_LENGTH && name[j]; j++)
@@ -99,20 +103,27 @@ ERROR_CODE ReadEfiVariable(char const *name, BYTE *buffer, uint_least32_t *size)
     fillFilePath(filePath, name);
 
     FILE *file = fopen(filePath, "rb");
-    ERROR_CODE result = 0
+    ERROR_CODE result = 0;
 
     if (file)
     {
         do
         {
-            if (fseek(file, DWORD_SIZE, SEEK_CUR))
+            // efivarfs prepends a 4-byte attribute word to the data and returns
+            // the whole variable in a single read; it does not support seeking,
+            // so read the attributes then the data sequentially.
+            uint32_t attributes = 0u;
+
+            errno = 0;
+
+            if (fread(&attributes, 1u, DWORD_SIZE, file) != DWORD_SIZE)
             {
-                result = errno;
+                result = errno ? errno : EIO;
                 break;
             }
 
             errno = 0;
-            *size = fread(buffer, 1u, *size, file);
+            *size = (uint_least32_t)fread(buffer, 1u, *size, file);
 
             if (ferror(file))
             {
@@ -120,30 +131,9 @@ ERROR_CODE ReadEfiVariable(char const *name, BYTE *buffer, uint_least32_t *size)
                 break;
             }
 
-            off_t pos = ftello(file);
-
-            if (pos < 0)
-            {
-                result = errno;
-                break;
-            }
-
-            if (fseek(file, 0, SEEK_END))
-            {
-                result = errno;
-                break;
-            }
-
-            off_t new_pos = ftello(file);
-
-            if (new_pos < 0)
-            {
-                result = errno;
-                break;
-            }
-
-            if (pos != new_pos)
-                result = EOVERFLOW;     // content truncated
+            // If a byte still remains, the caller's buffer was too small.
+            if (getc(file) != EOF)
+                result = EOVERFLOW;
         }
         while (false);
 
@@ -152,7 +142,7 @@ ERROR_CODE ReadEfiVariable(char const *name, BYTE *buffer, uint_least32_t *size)
     else
         *size = 0, result = errno == ENOENT ? 0 : errno;
 
-    return errno;
+    return result;
 #endif
 }
 
@@ -178,7 +168,6 @@ ERROR_CODE WriteEfiVariable(char const name[MAX_VARIABLE_NAME_LENGTH], BYTE /* c
     fillFilePath(filePath, name);
 
     FILE *file = fopen(filePath, "rb");
-    ERROR_CODE result = 0
 
     if (file)
     {
@@ -194,14 +183,15 @@ ERROR_CODE WriteEfiVariable(char const name[MAX_VARIABLE_NAME_LENGTH], BYTE /* c
             return errno;
     }
     else
-        return errno;
+        if (errno != ENOENT)            // a missing variable is simply created below
+            return errno;
 
     file = fopen(filePath, "wb");
 
     if (!file)
         return errno;
 
-    errno_t result = 0;
+    ERROR_CODE result = 0;
 
     do
     {

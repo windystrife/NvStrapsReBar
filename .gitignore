@@ -28,3 +28,7 @@ out/
 build/
 build-*/
 compile_commands.json
+
+# Linux port build
+ReBarState/build-linux/
+*.patch

@@ -2,11 +2,15 @@ export module ConfigurationWizard;
 
 import std;
 
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 import NvStraps.WinAPI;
+#endif
 import LocalAppConfig;
 import StatusVar;
 import DeviceRegistry;
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
 import WinApiError;
+#endif
 import DeviceList;
 import NvStrapsConfig;
 import TextWizardPage;
@@ -285,7 +289,7 @@ static void populateBridgeAndGpuConfig(NvStrapsConfig &config, vector<DeviceInfo
 		.bar0		= { .base = device.bar0.Base, .top = device.bar0.Top }
 	    };
 
-	    if (gpuConfig.bar0.base >= UINT32_MAX || gpuConfig.bar0.top >= UINT32_MAX)
+	    if (gpuConfig.bar0.base >= std::numeric_limits<std::uint32_t>::max() || gpuConfig.bar0.top >= std::numeric_limits<std::uint32_t>::max())
 		throw runtime_error("64-bit address for GPU BAR0 not implmented"s);
 
 	    if (gpuConfig.bar0.base & uint_least32_t { 0x0000'000Ful })
@@ -330,7 +334,11 @@ void runConfigurationWizard()
     if (dwStatusVarLastError)
     {
         showError(L"Status var last error: " + to_wstring(dwStatusVarLastError) + L' ');
+#if defined(WINDOWS) || defined(_WINDOWS) || defined(_WIN64) || defined(_WIN32)
         showError(system_error(static_cast<int>(dwStatusVarLastError), winapi_error_category()).code().message());
+#else
+        showError(system_error(static_cast<int>(dwStatusVarLastError), std::generic_category()).code().message());
+#endif
     }
 
     auto &&nvStrapsConfig = GetNvStrapsConfig();

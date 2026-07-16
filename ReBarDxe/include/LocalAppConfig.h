@@ -25,7 +25,8 @@
     };
 # else
 #  include <errno.h>
-    typedef errno_t ERROR_CODE;
+#  include "LinuxTypes.h"
+    typedef int ERROR_CODE;             // errno values are plain int on Linux (errno_t is Annex-K, not in glibc)
     enum
     {
 	ERROR_CODE_SUCCESS = (ERROR_CODE)0
