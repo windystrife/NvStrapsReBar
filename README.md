@@ -37,6 +37,55 @@ Credits go to the bellow github users, as I integrated and coded their findings 
 * [@Xelafic](https://github.com/Xelafic) for the first code samples (written in assembly!) and the first test for using the GPU STRAPS bits, documented by envytools, to select the BAR size during PCIe bring-up in UEFI code.
 * [@xCuri0](https://github.com/xCuri0/ReBARUEFI") for great support and for the ReBarUEFI DXE driver that enables ReBAR on the motherboard side, and allows intercepting and hooking into the PCIe enumeration phases in UEFI code on the motherboard.
 
+## 🐧 Building and running on Linux
+
+The `NvStrapsReBar` configuration tool (the `ReBarState` project) also builds and runs **natively on Linux** as a normal ELF binary — you no longer need Windows to configure Resizable BAR. On Linux it enumerates GPUs through `/sys/bus/pci` and reads/writes the configuration EFI variable through `efivarfs`.
+
+> 🇻🇳 **Hướng dẫn tiếng Việt:** [docs/linux-build.vi.md](docs/linux-build.vi.md)
+
+### Prerequisites (Ubuntu 24.04 / Debian 13, x86-64)
+
+The tool uses C++23 modules and `import std`, so it needs a recent Clang + libc++ and a CMake new enough to provide `import std`:
+
+```sh
+sudo apt install -y build-essential clang-18 libc++-18-dev libc++abi-18-dev \
+                    lld-18 ninja-build libpci-dev pkg-config git
+sudo snap install cmake --classic      # CMake 4.x, for native `import std`
+```
+
+`libpci-dev` provides human-readable GPU names; `efivarfs` (mounted by default on UEFI systems at `/sys/firmware/efi/efivars`) is required at run time.
+
+> **CMake version note:** `ReBarState/CMakeLists.txt` enables CMake's *experimental* `import std` support through a version-specific token (set here for CMake 4.4). If configuring fails with *"import std … not enabled when detecting toolchain"*, update the `CMAKE_EXPERIMENTAL_CXX_IMPORT_STD` value near the top of that file to the token your CMake version expects.
+
+### Build
+
+```sh
+cd ReBarState
+cmake -G Ninja -B build-linux \
+      -DCMAKE_C_COMPILER=clang-18 \
+      -DCMAKE_CXX_COMPILER=clang++-18 \
+      -DCMAKE_BUILD_TYPE=Release
+ninja -C build-linux
+```
+
+This produces the `build-linux/NvStrapsReBar` binary. (If `cmake` on your `PATH` is still the distro's older one, invoke the snap build explicitly as `/snap/bin/cmake`.)
+
+### Run
+
+Run it as **root**, because it reads/writes an EFI variable and enumerates PCI devices:
+
+```sh
+sudo ./build-linux/NvStrapsReBar
+```
+
+It presents the same text menu as the Windows tool: press `E` to enable ReBAR for Turing GPUs, then `S` to save the configuration to the EFI variable, and reboot. All the [Usage](#usage) and [Warning](#warning) notes above still apply — in particular you must still add the `NvStrapsReBar.ffs` DXE driver to your motherboard UEFI image; this tool only manages the configuration EFI variable.
+
+### Notes
+
+* Requires a UEFI (not legacy BIOS) system with `efivarfs` mounted read-write.
+* Linux-only cosmetic gaps: the `VRAM` and `Current BAR size` columns in the device table are left blank (there is no `sysfs` equivalent of the Windows DXGI query).
+* Tested with Clang 18 + libc++ 18, CMake 4.4 and Ninja on Ubuntu 24.04, with an RTX 2080 Ti.
+
 ## Working GPUs
 Check issue https://github.com/terminatorul/NvStrapsReBar/issues/1 for a list of known working GPUs (and motherboards).
 <!--
